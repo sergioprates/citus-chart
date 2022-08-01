@@ -39,6 +39,12 @@ spec:
           name: citus-cert
         - mountPath: /root-key
           name: root-cert
+      - name: init
+        image: alpine:3.16
+        command: ["sh", "-c", "chmod 777 /var/lib/postgresql"]
+        volumeMounts:
+          - mountPath: /var/lib/postgresql
+            name: data
       ##########################################
       #         main container
       containers:
@@ -49,6 +55,7 @@ spec:
         - -c
         - |
           sh <<'SH' &
+          export PGPASSWORD="P@ssword123"
           node_name=${HOSTNAME}.citus-worker.${POD_NAMESPACE}.svc.cluster.local;
 
           echo [$(date -Iseconds)] Wait pg_isready;
@@ -63,11 +70,11 @@ spec:
           nslookup ${node_name} > /dev/null || { echo Name not ready; kill -9 1; exit 1; }
 
           echo [$(date -Iseconds)] Wait manager;
-          timeout 5m sh -c "until psql 'host=citus user=desenv' --password P@ssword123 -c 'SELECT citus_is_coordinator()' > /dev/null; do sleep 2; done;";
-          psql 'host=citus user=desenv' --password P@ssword123 -c 'SELECT citus_is_coordinator()' > /dev/null || { echo Manager not ready; kill -9 1; exit 1; }
+          timeout 5m sh -c "until psql 'host=citus user=desenv' -c 'SELECT citus_is_coordinator()' > /dev/null; do sleep 2; done;";
+          psql 'host=citus user=desenv' -c 'SELECT citus_is_coordinator()' > /dev/null || { echo Manager not ready; kill -9 1; exit 1; }
 
           echo [$(date -Iseconds)] citus_add_node ${node_name};
-          psql 'host=citus user=desenv' --password P@ssword123 -c "SELECT * from citus_add_node('${node_name}', 5432);" || {
+          psql 'host=citus user=desenv' -c "SELECT * from citus_add_node('${node_name}', 5432);" || {
             echo citus_add_node failed;
             kill -9 1;
           }
@@ -104,12 +111,16 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
+          subPath: pgdata
         - name: citus-cert
           mountPath: "/etc/citus-cert"
           readOnly: true
         - name: conf
           mountPath: "/etc/postgres"
           readOnly: true
+
+        securityContext:
+          runAsUser: 0
 
         startupProbe:
           exec:

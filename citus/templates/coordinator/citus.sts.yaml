@@ -38,6 +38,12 @@ spec:
           name: citus-cert
         - mountPath: /root-key
           name: root-cert
+      - name: init
+        image: alpine:3.16
+        command: ["sh", "-c", "chmod 777 /var/lib/postgresql"]
+        volumeMounts:
+          - mountPath: /var/lib/postgresql
+            name: data
       ##########################################
       #         main container
       containers:
@@ -49,6 +55,7 @@ spec:
         - -c
         - |
           sh <<'SH' &
+          export PGPASSWORD="P@ssword123"
           node_name=citus.${POD_NAMESPACE}.svc.cluster.local;
 
           echo [$(date -Iseconds)] Wait pg_isready;
@@ -63,7 +70,7 @@ spec:
           nslookup ${node_name} > /dev/null || { echo Name not ready; kill -9 1; exit 1; }
 
           echo [$(date -Iseconds)] citus_set_coordinator_host ${node_name};
-          su-exec postgres psql -U desenv --password P@ssword123 -c "SELECT * from citus_set_coordinator_host('${node_name}', 5432);"  || {
+          su-exec postgres psql -U desenv -c "SELECT * from citus_set_coordinator_host('${node_name}', 5432);"  || {
             echo citus_set_coordinator_host failed;
             kill -9 1;
           }
@@ -99,9 +106,12 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: metadata.namespace
+        securityContext:
+          runAsUser: 0
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
+          subPath: pgdata
         - name: citus-cert
           mountPath: "/etc/citus-cert"
           readOnly: true
