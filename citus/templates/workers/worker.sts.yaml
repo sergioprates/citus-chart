@@ -18,6 +18,8 @@ spec:
       name: citus-worker
       labels:
         app: citus-worker
+      annotations:
+        sidecar.istio.io/inject: "false"
     spec:
       securityContext:
         fsGroup: 999
